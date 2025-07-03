@@ -61,7 +61,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onCreateProject }) => {
             <Sparkles className="text-white" size={24} />
           </div>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-            WebCraft AI
+           Voltic AI
           </h1>
         </div>
       </header>
@@ -174,7 +174,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onCreateProject }) => {
 
       {/* Footer */}
       <footer className="container mx-auto px-4 py-8 text-center text-gray-400 text-sm">
-        <p>Built with React, TypeScript, and AI • © 2025 WebCraft AI</p>
+        <p>Built with React, TypeScript, and AI • © 2025 Voltic AI</p>
       </footer>
     </div>
   );
