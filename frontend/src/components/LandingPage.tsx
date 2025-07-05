@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Sparkles, Zap, Code, Palette, Rocket, ArrowRight } from 'lucide-react';
+import { BACKEND_URL } from '../config';
 
 interface LandingPageProps {
   onCreateProject: (prompt: string) => void;
@@ -51,7 +52,18 @@ const LandingPage: React.FC<LandingPageProps> = ({ onCreateProject }) => {
       description: "Optimized builds ready for immediate deployment"
     }
   ];
-
+  async function init() {
+    const response = await fetch(`${BACKEND_URL}/template`,{
+      method: "POST",
+      body: JSON.stringify({
+        messages: prompt.trim()
+      })
+    });
+    const data = await response.json();
+  }
+  useEffect(()=>{
+      init();
+  },[])
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
       {/* Header */}
