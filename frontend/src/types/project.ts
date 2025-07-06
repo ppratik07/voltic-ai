@@ -1,3 +1,10 @@
+enum StepType{
+  CreateFile,
+  CreateFolder,
+  EditFile,
+  DeleteFile,
+  RunScript
+}
 export interface Project {
   id: string;
   name: string;
