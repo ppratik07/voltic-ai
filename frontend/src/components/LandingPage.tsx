@@ -1,202 +1,268 @@
 import React, { useEffect, useState } from 'react';
-import { Sparkles, Zap, Code, Palette, Rocket, ArrowRight } from 'lucide-react';
-import { BACKEND_URL } from '../config';
+import { useLocation } from 'react-router-dom';
+import { StepsList } from '../components/StepsList';
+import { FileExplorer } from '../components/FileExplorer';
+import { TabView } from '../components/TabView';
+import { CodeEditor } from '../components/CodeEditor';
+import { PreviewFrame } from '../components/PreviewFrame';
+import { Step, FileItem, StepType } from '../types';
 import axios from 'axios';
-import { Step } from '../types/project';
+import { BACKEND_URL } from '../config';
 import { parseXml } from '../steps';
+import { useWebContainer } from '../hooks/useWebContainer';
+import { FileNode } from '@webcontainer/api';
+import { Loader } from '../components/Loader';
 
-interface LandingPageProps {
-  onCreateProject: (prompt: string) => void;
+const MOCK_FILE_CONTENT = `// This is a sample file content
+import React from 'react';
+
+function Component() {
+  return <div>Hello World</div>;
 }
 
-const LandingPage: React.FC<LandingPageProps> = ({ onCreateProject }) => {
-  const [prompt, setPrompt] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
+export default Component;`;
+
+export function Builder() {
+  const location = useLocation();
+  const { prompt } = location.state as { prompt: string };
+  const [userPrompt, setPrompt] = useState("");
+  const [llmMessages, setLlmMessages] = useState<{role: "user" | "assistant", content: string;}[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [templateSet, setTemplateSet] = useState(false);
+  const webcontainer = useWebContainer();
+
+  const [currentStep, setCurrentStep] = useState(1);
+  const [activeTab, setActiveTab] = useState<'code' | 'preview'>('code');
+  const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
+  
   const [steps, setSteps] = useState<Step[]>([]);
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!prompt.trim()) return;
 
-    setIsGenerating(true);
+  const [files, setFiles] = useState<FileItem[]>([]);
 
-    // Simulate processing time
-    setTimeout(() => {
-      onCreateProject(prompt.trim());
-      setIsGenerating(false);
-    }, 1500);
-  };
+  useEffect(() => {
+    let originalFiles = [...files];
+    let updateHappened = false;
+    steps.filter(({status}) => status === "pending").map(step => {
+      updateHappened = true;
+      if (step?.type === StepType.CreateFile) {
+        let parsedPath = step.path?.split("/") ?? []; // ["src", "components", "App.tsx"]
+        let currentFileStructure = [...originalFiles]; // {}
+        let finalAnswerRef = currentFileStructure;
+  
+        let currentFolder = ""
+        while(parsedPath.length) {
+          currentFolder =  `${currentFolder}/${parsedPath[0]}`;
+          let currentFolderName = parsedPath[0];
+          parsedPath = parsedPath.slice(1);
+  
+          if (!parsedPath.length) {
+            // final file
+            let file = currentFileStructure.find(x => x.path === currentFolder)
+            if (!file) {
+              currentFileStructure.push({
+                name: currentFolderName,
+                type: 'file',
+                path: currentFolder,
+                content: step.code
+              })
+            } else {
+              file.content = step.code;
+            }
+          } else {
+            /// in a folder
+            let folder = currentFileStructure.find(x => x.path === currentFolder)
+            if (!folder) {
+              // create the folder
+              currentFileStructure.push({
+                name: currentFolderName,
+                type: 'folder',
+                path: currentFolder,
+                children: []
+              })
+            }
+  
+            currentFileStructure = currentFileStructure.find(x => x.path === currentFolder)!.children!;
+          }
+        }
+        originalFiles = finalAnswerRef;
+      }
 
-  const examplePrompts = [
-    "Create a modern portfolio website for a graphic designer",
-    "Build a landing page for a SaaS startup",
-    "Make a restaurant website with menu and reservations",
-    "Create an e-commerce store for handmade jewelry"
-  ];
+    })
 
-  const features = [
-    {
-      icon: Zap,
-      title: "Lightning Fast",
-      description: "Generate websites in seconds with AI-powered automation"
-    },
-    {
-      icon: Code,
-      title: "Clean Code",
-      description: "Production-ready React components with TypeScript"
-    },
-    {
-      icon: Palette,
-      title: "Beautiful Design",
-      description: "Modern, responsive designs that look professional"
-    },
-    {
-      icon: Rocket,
-      title: "Deploy Ready",
-      description: "Optimized builds ready for immediate deployment"
+    if (updateHappened) {
+
+      setFiles(originalFiles)
+      setSteps(steps => steps.map((s: Step) => {
+        return {
+          ...s,
+          status: "completed"
+        }
+        
+      }))
     }
-  ];
+    console.log(files);
+  }, [steps, files]);
+
+  useEffect(() => {
+    const createMountStructure = (files: FileItem[]): Record<string, any> => {
+      const mountStructure: Record<string, any> = {};
+  
+      const processFile = (file: FileItem, isRootFolder: boolean) => {  
+        if (file.type === 'folder') {
+          // For folders, create a directory entry
+          mountStructure[file.name] = {
+            directory: file.children ? 
+              Object.fromEntries(
+                file.children.map(child => [child.name, processFile(child, false)])
+              ) 
+              : {}
+          };
+        } else if (file.type === 'file') {
+          if (isRootFolder) {
+            mountStructure[file.name] = {
+              file: {
+                contents: file.content || ''
+              }
+            };
+          } else {
+            // For files, create a file entry with contents
+            return {
+              file: {
+                contents: file.content || ''
+              }
+            };
+          }
+        }
+  
+        return mountStructure[file.name];
+      };
+  
+      // Process each top-level file/folder
+      files.forEach(file => processFile(file, true));
+  
+      return mountStructure;
+    };
+  
+    const mountStructure = createMountStructure(files);
+  
+    // Mount the structure if WebContainer is available
+    console.log(mountStructure);
+    webcontainer?.mount(mountStructure);
+  }, [files, webcontainer]);
+
   async function init() {
     const response = await axios.post(`${BACKEND_URL}/template`, {
-      prompt: prompt.trim(),
+      prompt: prompt.trim()
     });
-    const { prompts, uiPrompts } = response.data();
-    setSteps(parseXml(uiPrompts[0]));
+    setTemplateSet(true);
+    
+    const {prompts, uiPrompts} = response.data;
+
+    setSteps(parseXml(uiPrompts[0]).map((x: Step) => ({
+      ...x,
+      status: "pending"
+    })));
+
+    setLoading(true);
     const stepsResponse = await axios.post(`${BACKEND_URL}/chat`, {
       messages: [...prompts, prompt].map(content => ({
         role: "user",
         content
       }))
     })
+
+    setLoading(false);
+
+    setSteps(s => [...s, ...parseXml(stepsResponse.data.response).map(x => ({
+      ...x,
+      status: "pending" as "pending"
+    }))]);
+
+    setLlmMessages([...prompts, prompt].map(content => ({
+      role: "user",
+      content
+    })));
+
+    setLlmMessages(x => [...x, {role: "assistant", content: stepsResponse.data.response}])
   }
+
   useEffect(() => {
     init();
   }, [])
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
-      {/* Header */}
-      <header className="container mx-auto px-4 py-6">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-blue-600 rounded-xl shadow-lg">
-            <Sparkles className="text-white" size={24} />
-          </div>
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-            Voltic AI
-          </h1>
-        </div>
+    <div className="min-h-screen bg-gray-900 flex flex-col">
+      <header className="bg-gray-800 border-b border-gray-700 px-6 py-4">
+        <h1 className="text-xl font-semibold text-gray-100">Website Builder</h1>
+        <p className="text-sm text-gray-400 mt-1">Prompt: {prompt}</p>
       </header>
-
-      {/* Hero Section */}
-      <main className="container mx-auto px-4 py-12 max-w-6xl">
-        <div className="text-center mb-16">
-          <h2 className="text-5xl md:text-6xl font-bold text-white mb-6 leading-tight">
-            Create Stunning Websites
-            <span className="block bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-              with AI Magic
-            </span>
-          </h2>
-          <p className="text-xl text-gray-300 mb-8 max-w-3xl mx-auto leading-relaxed">
-            Transform your ideas into beautiful, functional websites in minutes.
-            Just describe what you want, and our AI will build it for you.
-          </p>
-        </div>
-
-        {/* Prompt Input */}
-        <div className="max-w-4xl mx-auto mb-16">
-          <form onSubmit={handleSubmit} className="relative">
-            <div className="relative group">
-              <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Describe the website you want to create... (e.g., 'Create a modern portfolio website for a photographer with a gallery, about page, and contact form')"
-                className="w-full h-32 px-6 py-4 text-lg bg-gray-800/80 backdrop-blur-sm border-2 border-gray-600 rounded-2xl 
-                         focus:outline-none focus:border-blue-500 focus:bg-gray-800 transition-all duration-300 
-                         placeholder-gray-400 shadow-lg hover:shadow-xl resize-none text-white"
-                disabled={isGenerating}
-              />
-              <button
-                type="submit"
-                disabled={!prompt.trim() || isGenerating}
-                className="absolute bottom-4 right-4 px-6 py-3 bg-blue-600 text-white rounded-xl 
-                         hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed 
-                         transition-all duration-300 shadow-md hover:shadow-lg flex items-center gap-2
-                         disabled:hover:bg-blue-600"
-              >
-                {isGenerating ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    Create Website
-                    <ArrowRight size={16} />
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
-
-          {/* Example Prompts */}
-          <div className="mt-6">
-            <p className="text-sm text-gray-400 mb-3">Try these examples:</p>
-            <div className="flex flex-wrap gap-2">
-              {examplePrompts.map((example, index) => (
-                <button
-                  key={index}
-                  onClick={() => setPrompt(example)}
-                  className="px-4 py-2 text-sm bg-gray-700/80 hover:bg-gray-600/80 text-gray-200 rounded-lg 
-                           transition-colors duration-300 hover:scale-105 border border-gray-600"
-                  disabled={isGenerating}
-                >
-                  {example}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Features Grid */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
-          {features.map((feature, index) => (
-            <div
-              key={index}
-              className="bg-gray-800/80 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl 
-                       transition-all duration-300 hover:scale-105 border border-gray-700"
-            >
-              <div className="p-3 bg-blue-600/20 rounded-xl w-fit mb-4">
-                <feature.icon className="text-blue-400" size={24} />
+      
+      <div className="flex-1 overflow-hidden">
+        <div className="h-full grid grid-cols-4 gap-6 p-6">
+          <div className="col-span-1 space-y-6 overflow-auto">
+            <div>
+              <div className="max-h-[75vh] overflow-scroll">
+                <StepsList
+                  steps={steps}
+                  currentStep={currentStep}
+                  onStepClick={setCurrentStep}
+                />
               </div>
-              <h3 className="text-lg font-semibold text-white mb-2">{feature.title}</h3>
-              <p className="text-gray-300 text-sm leading-relaxed">{feature.description}</p>
-            </div>
-          ))}
-        </div>
+              <div>
+                <div className='flex'>
+                  <br />
+                  {(loading || !templateSet) && <Loader />}
+                  {!(loading || !templateSet) && <div className='flex'>
+                    <textarea value={userPrompt} onChange={(e) => {
+                    setPrompt(e.target.value)
+                  }} className='p-2 w-full'></textarea>
+                  <button onClick={async () => {
+                    const newMessage = {
+                      role: "user" as "user",
+                      content: userPrompt
+                    };
 
-        {/* Stats */}
-        <div className="bg-gray-800/80 backdrop-blur-sm rounded-2xl p-8 shadow-lg border border-gray-700">
-          <div className="grid md:grid-cols-3 gap-8 text-center">
-            <div>
-              <div className="text-3xl font-bold text-blue-400 mb-2">10,000+</div>
-              <div className="text-gray-300">Websites Created</div>
+                    setLoading(true);
+                    const stepsResponse = await axios.post(`${BACKEND_URL}/chat`, {
+                      messages: [...llmMessages, newMessage]
+                    });
+                    setLoading(false);
+
+                    setLlmMessages(x => [...x, newMessage]);
+                    setLlmMessages(x => [...x, {
+                      role: "assistant",
+                      content: stepsResponse.data.response
+                    }]);
+                    
+                    setSteps(s => [...s, ...parseXml(stepsResponse.data.response).map(x => ({
+                      ...x,
+                      status: "pending" as "pending"
+                    }))]);
+
+                  }} className='bg-purple-400 px-4'>Send</button>
+                  </div>}
+                </div>
+              </div>
             </div>
-            <div>
-              <div className="text-3xl font-bold text-purple-400 mb-2">99.9%</div>
-              <div className="text-gray-300">Uptime</div>
+          </div>
+          <div className="col-span-1">
+              <FileExplorer 
+                files={files} 
+                onFileSelect={setSelectedFile}
+              />
             </div>
-            <div>
-              <div className="text-3xl font-bold text-green-400 mb-2">{"< 30s"}</div>
-              <div className="text-gray-300">Average Generation Time</div>
+          <div className="col-span-2 bg-gray-900 rounded-lg shadow-lg p-4 h-[calc(100vh-8rem)]">
+            <TabView activeTab={activeTab} onTabChange={setActiveTab} />
+            <div className="h-[calc(100%-4rem)]">
+              {activeTab === 'code' ? (
+                <CodeEditor file={selectedFile} />
+              ) : (
+                <PreviewFrame webContainer={webcontainer} files={files} />
+              )}
             </div>
           </div>
         </div>
-      </main>
-
-      {/* Footer */}
-      <footer className="container mx-auto px-4 py-8 text-center text-gray-400 text-sm">
-        <p>Built with React, TypeScript, and AI • © 2025 Voltic AI</p>
-      </footer>
+      </div>
     </div>
   );
-};
-
-export default LandingPage;
+}
