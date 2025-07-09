@@ -5,11 +5,13 @@ import { BASE_PROMPT, getSystemPrompt } from "./prompts";
 import express from "express";
 import { TextBlock } from "@anthropic-ai/sdk/resources/messages";
 import { basePrompt as reactBasePrompt } from "./defaults/react";
-import { basePrompt as nodeBasePrompt} from "./defaults/react";
+import { basePrompt as nodeBasePrompt } from "./defaults/node";
+import cors from 'cors';
+
 const anthropic = new Anthropic();
 const app = express()
 app.use(express.json())
-
+app.use(cors())
 
 app.post('/template',async (req, res) => {
   const prompt = req.body.prompt;
@@ -55,8 +57,7 @@ app.post("/chat", async (req, res) => {
     res.json({
         response: (response.content[0] as TextBlock)?.text
     });
-})
-
+});
 
 app.listen(3000, () => {
   console.log("Server is running on port 3000");

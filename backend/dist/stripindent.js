@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.stripIndents = stripIndents;
+exports.stripIndents = void 0;
 function stripIndents(arg0, ...values) {
     if (typeof arg0 !== 'string') {
         const processedString = arg0.reduce((acc, curr, i) => {
@@ -12,6 +12,7 @@ function stripIndents(arg0, ...values) {
     }
     return _stripIndents(arg0);
 }
+exports.stripIndents = stripIndents;
 function _stripIndents(value) {
     return value
         .split('\n')

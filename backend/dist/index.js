@@ -17,10 +17,12 @@ const sdk_1 = __importDefault(require("@anthropic-ai/sdk"));
 const prompts_1 = require("./prompts");
 const express_1 = __importDefault(require("express"));
 const react_1 = require("./defaults/react");
-const react_2 = require("./defaults/react");
+const node_1 = require("./defaults/node");
+const cors_1 = __importDefault(require("cors"));
 const anthropic = new sdk_1.default();
 const app = (0, express_1.default)();
 app.use(express_1.default.json());
+app.use((0, cors_1.default)());
 app.post('/template', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const prompt = req.body.prompt;
     const response = yield anthropic.messages.create({
@@ -44,8 +46,8 @@ app.post('/template', (req, res) => __awaiter(void 0, void 0, void 0, function* 
     }
     if (answer === "node") {
         res.json({
-            prompts: [`Here is an artifact that contains all files of the project visible to you.\nConsider the contents of ALL files in the project.\n\n${react_2.basePrompt}\n\nHere is a list of files that exist on the file system but are not being shown to you:\n\n  - .gitignore\n  - package-lock.json\n`],
-            uiPrompts: [react_2.basePrompt]
+            prompts: [`Here is an artifact that contains all files of the project visible to you.\nConsider the contents of ALL files in the project.\n\n${node_1.basePrompt}\n\nHere is a list of files that exist on the file system but are not being shown to you:\n\n  - .gitignore\n  - package-lock.json\n`],
+            uiPrompts: [node_1.basePrompt]
         });
         return;
     }
