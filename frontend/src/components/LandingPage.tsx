@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Sparkles, Zap, Code, Palette, Rocket, ArrowRight } from 'lucide-react';
 import { BACKEND_URL } from '../config';
+import axios from 'axios';
+import { Step } from '../types/project';
+import { parseXml } from '../steps';
 
 interface LandingPageProps {
   onCreateProject: (prompt: string) => void;
@@ -9,13 +12,13 @@ interface LandingPageProps {
 const LandingPage: React.FC<LandingPageProps> = ({ onCreateProject }) => {
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-
+  const [steps, setSteps] = useState<Step[]>([]);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!prompt.trim()) return;
 
     setIsGenerating(true);
-    
+
     // Simulate processing time
     setTimeout(() => {
       onCreateProject(prompt.trim());
@@ -53,17 +56,21 @@ const LandingPage: React.FC<LandingPageProps> = ({ onCreateProject }) => {
     }
   ];
   async function init() {
-    const response = await fetch(`${BACKEND_URL}/template`,{
-      method: "POST",
-      body: JSON.stringify({
-        messages: prompt.trim()
-      })
+    const response = await axios.post(`${BACKEND_URL}/template`, {
+      prompt: prompt.trim(),
     });
-    const data = await response.json();
+    const { prompts, uiPrompts } = response.data();
+    setSteps(parseXml(uiPrompts[0]));
+    const stepsResponse = await axios.post(`${BACKEND_URL}/chat`, {
+      messages: [...prompts, prompt].map(content => ({
+        role: "user",
+        content
+      }))
+    })
   }
-  useEffect(()=>{
-      init();
-  },[])
+  useEffect(() => {
+    init();
+  }, [])
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
       {/* Header */}
@@ -73,7 +80,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onCreateProject }) => {
             <Sparkles className="text-white" size={24} />
           </div>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-           Voltic AI
+            Voltic AI
           </h1>
         </div>
       </header>
@@ -88,7 +95,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onCreateProject }) => {
             </span>
           </h2>
           <p className="text-xl text-gray-300 mb-8 max-w-3xl mx-auto leading-relaxed">
-            Transform your ideas into beautiful, functional websites in minutes. 
+            Transform your ideas into beautiful, functional websites in minutes.
             Just describe what you want, and our AI will build it for you.
           </p>
         </div>
